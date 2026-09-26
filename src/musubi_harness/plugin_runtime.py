@@ -21,6 +21,9 @@ class RuntimeConfigError(ValueError):
 
 
 BUNDLED_MEMORY_DATA = "musubi-memory-data"
+# The endpoint and credential that memory-data (bundled or operator) reads from
+# its environment. Only processes that talk to Musubi should receive them.
+TRANSPORT_ENV = ("MUSUBI_API_URL", "MUSUBI_TOKEN")
 
 SEGMENT = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -176,6 +179,20 @@ class PluginRuntime:
         env = os.environ.copy()
         env["FLEET_IDENTITY"] = config.actor
         env["FLEET_PRESENCE"] = config.seat
+        return env
+
+    def local_tool_environment(self, config: RuntimeConfig) -> dict[str, str]:
+        """The child environment for a subprocess that never contacts Musubi.
+
+        Same as ``tool_environment`` minus the transport credentials
+        (``TRANSPORT_ENV``). Local outbox commands (``remember``, ``enqueue``,
+        ``stage``, ``status``, ``inspect``, ``delivery-status``) write or read
+        only the local SQLite outbox, so they have no use for the token, even
+        in shadow mode. Only the drain and memory-data reads get it.
+        """
+        env = self.tool_environment(config)
+        for key in TRANSPORT_ENV:
+            env.pop(key, None)
         return env
 
     @staticmethod

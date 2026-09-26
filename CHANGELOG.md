@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `receipt-lookup` decodes those claims to self-attest the observer, and exits 2
   on an opaque token. The other commands only send it as the bearer.
 
+- `PluginRuntime.local_tool_environment(config)`: `tool_environment` minus
+  `MUSUBI_API_URL` / `MUSUBI_TOKEN` (`TRANSPORT_ENV`), for subprocesses that
+  only touch the local outbox. The MCP facade's `remember` uses it; the drain
+  and memory-data reads keep the full environment. Additive:
+  `tool_environment` is unchanged.
+
 ### Security
 - The bundled client refuses HTTP redirects, so the bearer token is never sent
   to a `Location` target. It accepts only `http`/`https` URLs without
