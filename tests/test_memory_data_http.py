@@ -313,3 +313,31 @@ def test_transport_error_text_never_carries_the_token() -> None:
         code = memory_data.main(["--json", "musubi", "status"])
     assert code == 2 and "[redacted]" in err.getvalue()
     assert TOKEN not in err.getvalue() + out.getvalue()
+
+
+@pytest.mark.parametrize("status", [401, 422, 502])
+def test_an_error_body_that_echoes_the_token_is_redacted(status: int) -> None:
+    # Yua's review, 2026-09-26: a 401 body quoting "Bearer <token>" went
+    # straight to stderr through MusubiHTTPError.
+    fake = Fake()
+    echo = {"error": {"code": "CONTENT_TOO_LARGE" if status == 422 else "E", "detail": f"got Authorization: Bearer {TOKEN}"}}
+    fake.reply("GET", "/v1/ops/status", status=status, body=echo)
+    fake.reply("POST", "/v1/episodic", status=status, body=echo)
+    with serve(fake) as url:
+        status_code, status_out, status_err = run(url, "status")
+        capture_code, capture_out, capture_err = run(
+            url, "capture-durable", "--idempotency-key", "k1", "--stdin", stdin=b'{"namespace":"alice/laptop/episodic"}'
+        )
+    everything = status_err + capture_err + json.dumps(status_out) + json.dumps(capture_out)
+    assert status_code == 2 and "[redacted]" in status_err
+    assert TOKEN not in everything
+
+
+def test_a_json_escaped_echo_of_the_token_is_redacted() -> None:
+    slashy = "abc/def+ghi=="
+    fake = Fake()
+    fake.reply("GET", "/v1/ops/status", status=401, body=b'{"detail": "Bearer abc\\/def+ghi=="}')
+    with serve(fake) as url:
+        code, _, err = run(url, "status", token=slashy)
+    assert code == 2 and "[redacted]" in err
+    assert "def+ghi" not in err

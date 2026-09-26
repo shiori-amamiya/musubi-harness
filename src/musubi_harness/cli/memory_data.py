@@ -119,7 +119,13 @@ def _redact(text: str, secret: str) -> str:
     # Complete only because token() already restricted the alphabet: errors
     # quote headers as bytes reprs, and a b64token's repr is itself. Loosen
     # _BEARER and a "\n" in a token would slip past this as "\\n".
-    return text.replace(secret, "[redacted]") if secret else text
+    # JSON encoders may escape "/" as "\/" (legal, and the b64token alphabet
+    # allows "/"), so an echoed token in a JSON error body has two spellings.
+    if not secret:
+        return text
+    for spelling in (secret, secret.replace("/", "\\/")):
+        text = text.replace(spelling, "[redacted]")
+    return text
 
 
 def utc_timestamp() -> str:
@@ -184,7 +190,10 @@ def _send(
         with _OPENER.open(req, timeout=timeout) as resp:
             raw = resp.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
-        detail = exc.read(64 * 1024).decode("utf-8", errors="replace")
+        # A server or proxy can echo request headers in an error body (Yua's
+        # review). Redact before the detail reaches the message, the parsed
+        # payload, or any JSON printed from it.
+        detail = _redact(exc.read(64 * 1024).decode("utf-8", errors="replace"), secret)
         raise MusubiHTTPError(exc.code, method, path, detail) from exc
     except CliError:
         raise
