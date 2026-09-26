@@ -79,24 +79,47 @@ def base_url() -> str:
     raw = os.environ.get("MUSUBI_API_URL", "").strip().rstrip("/")
     if not raw:
         raise CliError("MUSUBI_API_URL is not configured")
-    parts = urllib.parse.urlsplit(raw)
+    invalid = "MUSUBI_API_URL must be an http(s) URL without credentials, query or fragment"
+    try:
+        # urlsplit, .hostname and .port each raise ValueError on malformed input
+        # (an unclosed IPv6 bracket, a non-IP inside brackets, a bad port).
+        # That is bad config, so it exits 2 before any network like the rest.
+        parts = urllib.parse.urlsplit(raw)
+        hostname, _port = parts.hostname, parts.port
+    except ValueError as exc:
+        raise CliError(f"{invalid}: {exc}") from exc
     if (
         parts.scheme not in ("http", "https")
-        or not parts.hostname
+        or not hostname
         or parts.username is not None
         or parts.password is not None
         or parts.query
         or parts.fragment
     ):
-        raise CliError("MUSUBI_API_URL must be an http(s) URL without credentials, query or fragment")
+        raise CliError(invalid)
     return raw if raw.endswith("/v1") else f"{raw}/v1"
+
+
+# RFC 6750 b64token. A JWT always fits; anything else (a newline, a space,
+# non-ASCII) would reach http.client, whose error echoes the header value.
+_BEARER = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
 
 
 def token() -> str:
     value = os.environ.get("MUSUBI_TOKEN", "").strip()
     if not value:
         raise CliError("MUSUBI_TOKEN is not configured")
+    if not _BEARER.fullmatch(value):
+        # Never include the value: this message goes to stderr and into logs.
+        raise CliError("MUSUBI_TOKEN contains characters a bearer token cannot have")
     return value
+
+
+def _redact(text: str, secret: str) -> str:
+    # Complete only because token() already restricted the alphabet: errors
+    # quote headers as bytes reprs, and a b64token's repr is itself. Loosen
+    # _BEARER and a "\n" in a token would slip past this as "\\n".
+    return text.replace(secret, "[redacted]") if secret else text
 
 
 def utc_timestamp() -> str:
@@ -150,7 +173,8 @@ def _send(
     url = f"{base_url()}/{path.lstrip('/')}"
     if query:
         url += "?" + urllib.parse.urlencode(query)
-    headers = {"Accept": "application/json", "Authorization": f"Bearer {bearer or token()}"}
+    secret = bearer or token()
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {secret}"}
     if content_type:
         headers["Content-Type"] = content_type
     if extra_headers:
@@ -165,7 +189,8 @@ def _send(
     except CliError:
         raise
     except Exception as exc:  # noqa: BLE001 - network failures become one clear message
-        raise CliError(f"Musubi request failed {method.upper()} {path}: {exc}") from exc
+        # Exception text can quote request headers; the token must not reach stderr.
+        raise CliError(f"Musubi request failed {method.upper()} {path}: {_redact(str(exc), secret)}") from exc
     if len(raw) > MAX_RESPONSE_BYTES:
         raise CliError(f"Musubi response for {method.upper()} {path} exceeds {MAX_RESPONSE_BYTES} bytes")
     if not raw.strip():

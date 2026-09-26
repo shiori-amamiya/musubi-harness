@@ -211,6 +211,13 @@ def test_http_errors_exit_2_with_the_status_on_stderr() -> None:
         ({"MUSUBI_API_URL": "http://127.0.0.1:9"}, "MUSUBI_TOKEN is not configured"),
         ({"MUSUBI_API_URL": "http://user:pw@host", "MUSUBI_TOKEN": TOKEN}, "without credentials"),
         ({"MUSUBI_API_URL": "ftp://host", "MUSUBI_TOKEN": TOKEN}, "http(s)"),
+        # urlsplit/.hostname/.port raise ValueError on these; they must still
+        # be bad config (exit 2), never a traceback. Yua's review, 2026-09-26.
+        ({"MUSUBI_API_URL": "http://[::1", "MUSUBI_TOKEN": TOKEN}, "Invalid IPv6 URL"),
+        ({"MUSUBI_API_URL": "http://host]/", "MUSUBI_TOKEN": TOKEN}, "Invalid IPv6 URL"),
+        ({"MUSUBI_API_URL": "http://[zz]/", "MUSUBI_TOKEN": TOKEN}, "does not appear to be an IPv4 or IPv6"),
+        ({"MUSUBI_API_URL": "http://host:99999", "MUSUBI_TOKEN": TOKEN}, "Port out of range"),
+        ({"MUSUBI_API_URL": "http://host:abc", "MUSUBI_TOKEN": TOKEN}, "Port could not be cast"),
     ],
 )
 def test_bad_configuration_fails_before_any_network(env: dict[str, str], message: str) -> None:
@@ -268,3 +275,41 @@ def test_an_opaque_token_works_as_a_bearer_but_not_for_receipt_lookup() -> None:
         )
     assert status_code == 0
     assert code == 2 and payload is None and "not a JWT" in err
+
+
+SECRET = "s3cr3t-value"
+
+
+@pytest.mark.parametrize(
+    "bad_token",
+    [f"{SECRET}\nattack", f"{SECRET}\r\nX-Evil: 1", f"{SECRET} attack", f"{SECRET}é"],
+    ids=["newline", "crlf-header-injection", "space", "non-ascii"],
+)
+def test_a_malformed_token_is_refused_without_echoing_it(bad_token: str) -> None:
+    # Yua's review, 2026-09-26: http.client's "Invalid header value" error
+    # quoted the whole Authorization header, token included, on stderr.
+    fake = Fake()
+    fake.reply("GET", "/v1/ops/status", body={"status": "ok"})
+    with serve(fake) as url:
+        code, payload, err = run(url, "status", token=bad_token)
+    assert code == 2 and payload is None
+    assert "cannot have" in err and SECRET not in err
+    assert fake.requests == []
+
+
+def test_transport_error_text_never_carries_the_token() -> None:
+    # Second layer: whatever raises inside the request, its text is redacted.
+    def explode(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError(f"socket said: Authorization: Bearer {TOKEN}")
+
+    out, err = io.StringIO(), io.StringIO()
+    env = {"MUSUBI_API_URL": "http://127.0.0.1:9", "MUSUBI_TOKEN": TOKEN}
+    with (
+        patch.dict("os.environ", env, clear=True),
+        patch.object(memory_data._OPENER, "open", explode),
+        redirect_stdout(out),
+        redirect_stderr(err),
+    ):
+        code = memory_data.main(["--json", "musubi", "status"])
+    assert code == 2 and "[redacted]" in err.getvalue()
+    assert TOKEN not in err.getvalue() + out.getvalue()
