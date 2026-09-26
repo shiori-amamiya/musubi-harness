@@ -25,6 +25,11 @@ Differences from the operator tool, all deliberately stricter:
 - responses are capped at ``MAX_RESPONSE_BYTES``;
 - only ``http``/``https`` URLs without credentials, query or fragment are used.
 
+- stderr carries only locally-generated text: HTTP status, method, path, a
+  well-formed server error code, and the OS's own socket errors. Response
+  bodies and server-supplied exception text are never printed, because a
+  server or proxy can echo the bearer token in them in any encoding.
+
 Errors print ``error: <message>`` on stderr and exit 2, like the operator tool.
 """
 
@@ -53,15 +58,43 @@ class CliError(RuntimeError):
     """Expected failure with a user-facing message."""
 
 
+_ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+
+
 class MusubiHTTPError(CliError):
-    def __init__(self, status_code: int, method: str, path: str, detail: str) -> None:
-        super().__init__(f"Musubi HTTP {status_code} {method.upper()} {path}: {detail[:600]}")
+    """An HTTP error whose message carries only locally-generated text.
+
+    The response body is untrusted: a server or proxy can echo the request's
+    Authorization header in it, in any encoding (raw, JSON \\u escapes, percent
+    encoding). So the body is never printed. It is kept in ``payload`` for the
+    one strict parse that needs it (CONTENT_TOO_LARGE), and the message adds
+    the server's error code only when it has the shape of a code.
+    """
+
+    def __init__(self, status_code: int, method: str, path: str, body: str) -> None:
         self.status_code = status_code
         try:
-            decoded = json.loads(detail)
+            decoded = json.loads(body)
         except json.JSONDecodeError:
             decoded = None
         self.payload = decoded if isinstance(decoded, dict) else None
+        error = self.payload.get("error") if self.payload is not None else None
+        code = error.get("code") if isinstance(error, dict) else None
+        suffix = f" ({code})" if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else ""
+        super().__init__(f"Musubi HTTP {status_code} {method.upper()} {path}{suffix}")
+
+
+def _local_reason(exc: BaseException) -> str:
+    """Describe a transport failure using only text this machine produced.
+
+    Server-controlled text reaches exception messages too (http.client quotes
+    a malformed status line verbatim), so only the class name and, for socket
+    errors, the operating system's own strerror are printed.
+    """
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(reason, OSError) and reason.strerror:
+        return f"{type(reason).__name__}: {reason.strerror}"
+    return type(reason).__name__ if isinstance(reason, BaseException) else type(exc).__name__
 
 
 class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
@@ -111,21 +144,9 @@ def token() -> str:
         raise CliError("MUSUBI_TOKEN is not configured")
     if not _BEARER.fullmatch(value):
         # Never include the value: this message goes to stderr and into logs.
+        # (Also keeps a malformed token from reaching http.client at all.)
         raise CliError("MUSUBI_TOKEN contains characters a bearer token cannot have")
     return value
-
-
-def _redact(text: str, secret: str) -> str:
-    # Complete only because token() already restricted the alphabet: errors
-    # quote headers as bytes reprs, and a b64token's repr is itself. Loosen
-    # _BEARER and a "\n" in a token would slip past this as "\\n".
-    # JSON encoders may escape "/" as "\/" (legal, and the b64token alphabet
-    # allows "/"), so an echoed token in a JSON error body has two spellings.
-    if not secret:
-        return text
-    for spelling in (secret, secret.replace("/", "\\/")):
-        text = text.replace(spelling, "[redacted]")
-    return text
 
 
 def utc_timestamp() -> str:
@@ -179,8 +200,7 @@ def _send(
     url = f"{base_url()}/{path.lstrip('/')}"
     if query:
         url += "?" + urllib.parse.urlencode(query)
-    secret = bearer or token()
-    headers = {"Accept": "application/json", "Authorization": f"Bearer {secret}"}
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {bearer or token()}"}
     if content_type:
         headers["Content-Type"] = content_type
     if extra_headers:
@@ -190,16 +210,12 @@ def _send(
         with _OPENER.open(req, timeout=timeout) as resp:
             raw = resp.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
-        # A server or proxy can echo request headers in an error body (Yua's
-        # review). Redact before the detail reaches the message, the parsed
-        # payload, or any JSON printed from it.
-        detail = _redact(exc.read(64 * 1024).decode("utf-8", errors="replace"), secret)
-        raise MusubiHTTPError(exc.code, method, path, detail) from exc
+        body_text = exc.read(64 * 1024).decode("utf-8", errors="replace")
+        raise MusubiHTTPError(exc.code, method, path, body_text) from exc
     except CliError:
         raise
     except Exception as exc:  # noqa: BLE001 - network failures become one clear message
-        # Exception text can quote request headers; the token must not reach stderr.
-        raise CliError(f"Musubi request failed {method.upper()} {path}: {_redact(str(exc), secret)}") from exc
+        raise CliError(f"Musubi request failed {method.upper()} {path}: {_local_reason(exc)}") from exc
     if len(raw) > MAX_RESPONSE_BYTES:
         raise CliError(f"Musubi response for {method.upper()} {path} exceeds {MAX_RESPONSE_BYTES} bytes")
     if not raw.strip():

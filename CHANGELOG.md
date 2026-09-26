@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The bundled client refuses HTTP redirects, so the bearer token is never sent
   to a `Location` target. It accepts only `http`/`https` URLs without
   credentials, query or fragment, and caps responses at 16 MiB.
+- stderr carries only locally-generated text (status, method, path, a
+  well-formed server error code, the OS's socket error). Response bodies and
+  server-supplied exception text are never printed, so a server or proxy that
+  echoes the Authorization header cannot leak it through our logs in any
+  encoding. `MUSUBI_TOKEN` must use the RFC 6750 token alphabet; a malformed
+  one is refused without echoing it.
+- A malformed `MUSUBI_API_URL` is a configuration error (exit 2), never a
+  traceback.
 
 ### Unchanged
 - Where an operator `memory-data` is configured, on `PATH`, beside

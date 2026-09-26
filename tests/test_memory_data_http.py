@@ -297,10 +297,13 @@ def test_a_malformed_token_is_refused_without_echoing_it(bad_token: str) -> None
     assert fake.requests == []
 
 
-def test_transport_error_text_never_carries_the_token() -> None:
-    # Second layer: whatever raises inside the request, its text is redacted.
+def test_server_supplied_exception_text_is_never_printed() -> None:
+    # http.client quotes a malformed status line verbatim; that line is the
+    # server's. Only the class name reaches stderr.
+    import http.client
+
     def explode(*_args: Any, **_kwargs: Any) -> Any:
-        raise OSError(f"socket said: Authorization: Bearer {TOKEN}")
+        raise http.client.BadStatusLine(f"HTTP/1.1 {TOKEN}")
 
     out, err = io.StringIO(), io.StringIO()
     env = {"MUSUBI_API_URL": "http://127.0.0.1:9", "MUSUBI_TOKEN": TOKEN}
@@ -311,33 +314,57 @@ def test_transport_error_text_never_carries_the_token() -> None:
         redirect_stderr(err),
     ):
         code = memory_data.main(["--json", "musubi", "status"])
-    assert code == 2 and "[redacted]" in err.getvalue()
+    assert code == 2 and "BadStatusLine" in err.getvalue()
     assert TOKEN not in err.getvalue() + out.getvalue()
 
 
+def test_a_local_socket_error_keeps_its_os_message() -> None:
+    fake_closed = "http://127.0.0.1:9"  # nothing listens on the discard port
+    code, _, err = run(fake_closed, "status")
+    assert code == 2 and "Connection refused" in err
+
+
+def _abc_escaped() -> str:
+    return "".join(f"\\u{ord(ch):04x}" for ch in "abc123")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        f'{{"error": {{"code": "E", "detail": "Bearer {TOKEN}"}}}}',
+        '{"detail": "Bearer ' + _abc_escaped() + '"}',
+        '{"detail": "Bearer abc%31%32%33"}',
+        "<html>Bearer abc123 untrusted-marker</html>",
+    ],
+    ids=["raw", "json-unicode-escapes", "percent-encoded", "html"],
+)
 @pytest.mark.parametrize("status", [401, 422, 502])
-def test_an_error_body_that_echoes_the_token_is_redacted(status: int) -> None:
-    # Yua's review, 2026-09-26: a 401 body quoting "Bearer <token>" went
-    # straight to stderr through MusubiHTTPError.
+def test_an_error_body_is_never_printed_in_any_encoding(status: int, body: str) -> None:
+    # Tama's review, 2026-09-26: a body with the token as JSON \\u escapes got
+    # past spelling-based redaction. The body is no longer printed at all.
     fake = Fake()
-    echo = {"error": {"code": "CONTENT_TOO_LARGE" if status == 422 else "E", "detail": f"got Authorization: Bearer {TOKEN}"}}
-    fake.reply("GET", "/v1/ops/status", status=status, body=echo)
-    fake.reply("POST", "/v1/episodic", status=status, body=echo)
+    fake.reply("GET", "/v1/ops/status", status=status, body=body.encode())
+    fake.reply("POST", "/v1/episodic", status=status, body=body.encode())
+    token = TOKEN if "Bearer ey" in body else "abc123"
     with serve(fake) as url:
-        status_code, status_out, status_err = run(url, "status")
+        status_code, status_out, status_err = run(url, "status", token=token)
         capture_code, capture_out, capture_err = run(
-            url, "capture-durable", "--idempotency-key", "k1", "--stdin", stdin=b'{"namespace":"alice/laptop/episodic"}'
+            url, "capture-durable", "--idempotency-key", "k1", "--stdin", stdin=b'{"namespace":"alice/laptop/episodic"}', token=token
         )
-    everything = status_err + capture_err + json.dumps(status_out) + json.dumps(capture_out)
-    assert status_code == 2 and "[redacted]" in status_err
-    assert TOKEN not in everything
+    printed = status_err + capture_err + json.dumps(status_out) + json.dumps(capture_out)
+    assert status_code == 2 and capture_code == 2
+    assert status_err.startswith(f"error: Musubi HTTP {status} GET /ops/status")
+    assert "Bearer" not in printed and "untrusted-marker" not in printed
+    # Decoding what was printed must not recover the token either.
+    assert token not in printed.encode().decode("unicode_escape")
 
 
-def test_a_json_escaped_echo_of_the_token_is_redacted() -> None:
-    slashy = "abc/def+ghi=="
+def test_a_well_formed_server_error_code_is_kept() -> None:
     fake = Fake()
-    fake.reply("GET", "/v1/ops/status", status=401, body=b'{"detail": "Bearer abc\\/def+ghi=="}')
+    fake.reply("POST", "/v1/retrieve", status=503, body={"error": {"code": "BACKEND_UNAVAILABLE", "detail": "x"}})
+    fake.reply("GET", "/v1/ops/status", status=503, body={"error": {"code": "not a code: Bearer x"}})
     with serve(fake) as url:
-        code, _, err = run(url, "status", token=slashy)
-    assert code == 2 and "[redacted]" in err
-    assert "def+ghi" not in err
+        _, _, kept = run(url, "recent", "--namespace", "alice/laptop", "--exact")
+        _, _, dropped = run(url, "status")
+    assert kept.strip() == "error: Musubi HTTP 503 POST /retrieve (BACKEND_UNAVAILABLE)"
+    assert dropped.strip() == "error: Musubi HTTP 503 GET /ops/status"
