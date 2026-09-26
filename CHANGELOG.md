@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-26
+
+### Added
+- `py.typed` marker (PEP 561) so downstream mypy sees the package as
+  type-complete. The wheel now ships the marker file.
+
+## [1.0.0] - 2026-09-26
+
 ### Added
 - Initial public release of `musubi-harness` — the host-neutral Musubi
   memory runtime extracted from the `lib/musubi_harness/` source tree in
@@ -21,3 +29,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against `musubi-harness>=1.0.0` instead of the workspace layout.
 
 [Unreleased]: https://github.com/sourceblender/musubi-harness/compare/HEAD
+[1.0.1]: https://github.com/sourceblender/musubi-harness/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/sourceblender/musubi-harness/compare/HEAD...v1.0.0

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "musubi-harness"
-version = "1.0.0"
+version = "1.0.1"
 description = "Host-neutral Musubi memory runtime — the shared core that Claude Code, Codex, LiveKit, Hermes, and OpenClaw seat adapters depend on."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -46,6 +46,9 @@ musubi-harness-conformance = "musubi_harness.cli.conformance:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/musubi_harness"]
+# PEP 561: ship the py.typed marker so downstream mypy can see the
+# package as type-complete.
+include = ["src/musubi_harness/py.typed"]
 
 [tool.hatch.build.targets.sdist]
 include = [
