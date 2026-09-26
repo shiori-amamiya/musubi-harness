@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0](https://github.com/sourceblender/musubi-harness/compare/v1.1.1...v1.2.0) - 2026-09-26
+
 ### Added
 - `Drainer.flush(max_rows, budget_seconds)` and `musubi-harness drain --once --max N
   --budget-seconds S`: deliver several rows per pass, oldest first, stopping when
@@ -15,9 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shrink a backlog: measured on a live seat, queue depth 11-24 for hours and a
   median delivery lag of 66 minutes. `--max 1` (the default) prints exactly what
   it did before.
-- The MCP facade's `remember` drains up to 5 rows within 8 s and finds its own
+- The MCP facade's `remember` drains up to 5 rows within 4 s and finds its own
   event anywhere in the batch, so a remember behind a backlog can still verify
-  in the same call.
+  in the same call. Its process timeout covers a full row started just before
+  the budget ends (one row is up to four memory-data calls).
+- An error after the first row is reported as an `error` row and ends the
+  batch; rows already verified stay in the report.
 
 ## [1.1.1](https://github.com/sourceblender/musubi-harness/compare/v1.1.0...v1.1.1) - 2026-09-26
 
