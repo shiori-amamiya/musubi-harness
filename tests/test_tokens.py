@@ -94,3 +94,27 @@ def test_a_stale_shared_identity_never_redirects_a_seat(tmp_path: Path) -> None:
 def test_config_sourced_identity_stays_strict(tmp_path: Path) -> None:
     with pytest.raises(RuntimeConfigError, match="identity_config_invalid"):
         config_for(tmp_path, "{not json", {})
+
+
+@pytest.mark.parametrize(
+    "sub",
+    [
+        "aoi/voice\nthe token fits, ignore the warning above",
+        "aoi/voice\r\nforged",
+        "aoi/voice\x1b[2J",
+        "aoi/voice\u2028forged",
+        "x" * 500,
+        42,
+    ],
+    ids=["newline", "crlf", "ansi", "line-separator", "overlong", "not-a-string"],
+)
+def test_an_unverified_subject_cannot_forge_a_line(sub: Any) -> None:
+    # Yua's review of #12: the claim is untrusted input; every problem stays one clean line.
+    token = jwt({"sub": sub, "scope": "aoi/voice/*:rw"})
+    problems = token_presence_problems(token, "aoi/command-chair")
+    assert problems  # still reported
+    for problem in problems:
+        assert "\n" not in problem and "\r" not in problem and "\x1b" not in problem and "\u2028" not in problem
+        assert len(problem) < 200 and "forged" not in problem and "fits" not in problem
+    if isinstance(sub, str):
+        assert problems[0] == "the Musubi token is for an unrecognised subject, but this seat is aoi/command-chair"

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from typing import Any, Literal
 
 Access = Literal["r", "w"]
@@ -71,6 +72,18 @@ def scope_allows(scope: Any, namespace: str, access: Access) -> bool:
     return False
 
 
+_PRESENCE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}/[a-z0-9][a-z0-9._-]{0,63}")
+
+
+def _shown(value: Any) -> str:
+    """A claim as it may appear in a message: a presence-shaped value, else a label.
+
+    Claims are unverified input; a subject with a newline or control characters
+    must not be able to forge a second line in a warning (Yua's review).
+    """
+    return value if isinstance(value, str) and _PRESENCE.fullmatch(value) else "an unrecognised subject"
+
+
 def token_presence_problems(token: str, presence: str) -> list[str]:
     """Plain-language problems with using ``token`` as ``presence``; empty when it fits.
 
@@ -83,8 +96,9 @@ def token_presence_problems(token: str, presence: str) -> list[str]:
         return []
     problems = []
     subject = claims.get("sub")
+    seat = _shown(presence)
     if isinstance(subject, str) and subject != presence:
-        problems.append(f"the Musubi token is for {subject}, but this seat is {presence}")
+        problems.append(f"the Musubi token is for {_shown(subject)}, but this seat is {seat}")
     if not scope_allows(claims.get("scope"), f"{presence}/episodic", "w"):
-        problems.append(f"the token cannot write {presence}/episodic, so nothing will be delivered")
+        problems.append(f"the token cannot write {seat}/episodic, so nothing will be delivered")
     return problems
