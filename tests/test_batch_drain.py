@@ -130,3 +130,59 @@ def test_remember_finds_its_own_event_anywhere_in_the_batch(tmp_path: Path) -> N
     payload = json.loads(response["content"][0]["text"])
     assert (payload["status"], payload["object_id"]) == ("verified", "mine")
     assert drain_argv[0][drain_argv[0].index("--max") + 1] == "5"
+
+
+def test_an_error_after_the_first_row_keeps_the_verified_report(tmp_path: Path) -> None:
+    drainer, _ = drainer_with([], tmp_path)
+    calls = iter([VERIFIED, OSError("memory-data vanished")])
+
+    def flaky(*, now: float | None = None) -> dict[str, object]:
+        step = next(calls)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+    drainer.flush_once = flaky  # type: ignore[method-assign]
+    results = drainer.flush(max_rows=5, budget_seconds=60)
+    assert results == [VERIFIED, {"state": "error", "reason": "OSError"}]
+
+
+def test_an_error_on_the_first_row_still_raises(tmp_path: Path) -> None:
+    drainer, _ = drainer_with([], tmp_path)
+
+    def broken(*, now: float | None = None) -> dict[str, object]:
+        raise OSError("memory-data vanished")
+
+    drainer.flush_once = broken  # type: ignore[method-assign]
+    with pytest.raises(OSError):
+        drainer.flush(max_rows=5, budget_seconds=60)
+
+
+def test_the_remember_drain_timeout_covers_a_full_row_past_the_budget(tmp_path: Path) -> None:
+    # One row is up to 4 memory-data calls at --timeout 5; a row started just
+    # before the budget ends must finish before the process is killed.
+    env = {
+        "MUSUBI_ACTOR": "alice",
+        "MUSUBI_PRESENCE": "alice/laptop",
+        "MUSUBI_ZONE": "home",
+        "MUSUBI_DELIVERY_MODE": "verified",
+        "MUSUBI_HARNESS_BIN": "/opt/fake/musubi-harness",
+        "MUSUBI_MEMORY_DATA_BIN": "/opt/fake/memory-data",
+    }
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if argv[3] == "remember":
+            seen["id"] = argv[argv.index("--event-id") + 1]
+            return subprocess.CompletedProcess(argv, 0, json.dumps({"result": {"event_id": seen["id"], "state": "pending"}}), "")
+        seen["budget"] = float(argv[argv.index("--budget-seconds") + 1])
+        seen["per_call"] = float(argv[argv.index("--timeout") + 1])
+        seen["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"ok": True, "result": {"state": "idle"}}), "")
+
+    with patch.dict("os.environ", env, clear=True):
+        runtime = PluginRuntime("batch-test", default_data_root=tmp_path)
+        facade = PluginMcpFacade(runtime, source="claude-code", event_prefix="t", owner_label="t", server_name="t")
+        with patch("musubi_harness.plugin_mcp.subprocess.run", fake_run):
+            facade.call_tool(runtime.runtime_config(), "musubi_remember", {"content": "a fact"})
+    assert seen["timeout"] > seen["budget"] + 4 * seen["per_call"]

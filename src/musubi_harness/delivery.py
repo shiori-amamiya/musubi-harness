@@ -901,13 +901,26 @@ class Drainer:
         the queue is idle, the budget is spent, or a row did not verify. Stopping
         at a failure keeps today's guarantee that a failing backend costs at
         most one attempt per pass.
+
+        The budget only stops *new* rows; a row already started runs to the end.
+        One row is up to four memory-data calls (receipt lookup, POST, readback,
+        and a second lookup on a dedup readback), so a caller's process timeout
+        must be at least ``budget_seconds + 4 * per-call timeout``.
         """
         if max_rows < 1 or budget_seconds <= 0:
             raise ContractError("max_rows and budget_seconds must be positive")
         started = clock()
         results: list[dict[str, object]] = []
         while len(results) < max_rows:
-            result = self.flush_once()
+            try:
+                result = self.flush_once()
+            except Exception as exc:
+                if not results:
+                    raise  # the first row fails exactly as flush_once always did
+                # Rows already verified stay reported; an error must not turn a
+                # verified remember back into "queued" (Aoi's review).
+                results.append({"state": "error", "reason": type(exc).__name__})
+                break
             results.append(result)
             if result.get("state") != "verified" or clock() - started >= budget_seconds:
                 break

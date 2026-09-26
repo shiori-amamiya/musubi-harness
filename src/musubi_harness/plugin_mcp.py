@@ -148,6 +148,9 @@ def _string_list(value: Any, *, allowed: set[str] | None = None) -> list[str]:
     return normalized
 
 
+REMEMBER_DRAIN_BUDGET_S = 4
+
+
 class PluginMcpFacade:
     """Canonical five-tool facade with adapter labels as its only variation."""
 
@@ -374,11 +377,13 @@ class PluginMcpFacade:
                     "--max",
                     "5",
                     "--budget-seconds",
-                    "8",
+                    str(REMEMBER_DRAIN_BUDGET_S),
                 ],
                 text=True,
                 capture_output=True,
-                timeout=15,
+                # Budget + one full row (4 calls x 5 s) + slack: a row started just
+                # before the budget ends must not be killed mid-delivery.
+                timeout=REMEMBER_DRAIN_BUDGET_S + 4 * 5 + 1,
                 check=False,
                 env=self.runtime.tool_environment(config),
             )
