@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-09-26
+## [1.1.0](https://github.com/sourceblender/musubi-harness/compare/v1.0.1...v1.1.0) - 2026-09-26
 
 ### Added
 - `musubi-memory-data`: a public, stdlib-only HTTP client for the six Musubi
