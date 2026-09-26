@@ -368,3 +368,38 @@ def test_a_well_formed_server_error_code_is_kept() -> None:
         _, _, dropped = run(url, "status")
     assert kept.strip() == "error: Musubi HTTP 503 POST /retrieve (BACKEND_UNAVAILABLE)"
     assert dropped.strip() == "error: Musubi HTTP 503 GET /ops/status"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError(111, f"Bearer {TOKEN}"),
+        ConnectionRefusedError(61, f"Bearer {TOKEN}"),
+        OSError(f"Bearer {TOKEN}"),
+        TimeoutError(f"Bearer {TOKEN}"),
+    ],
+    ids=["oserror-errno", "subclass-errno", "oserror-no-errno", "timeout"],
+)
+def test_no_text_held_by_the_exception_is_printed(error: OSError) -> None:
+    # Tama's review, 2026-09-26: strerror is a constructor argument, not proof
+    # the OS wrote it. Only class, errno and a local os.strerror lookup print.
+    import urllib.error
+
+    def explode(*_args: Any, **_kwargs: Any) -> Any:
+        raise urllib.error.URLError(error)
+
+    out, err = io.StringIO(), io.StringIO()
+    env = {"MUSUBI_API_URL": "http://127.0.0.1:9", "MUSUBI_TOKEN": TOKEN}
+    with (
+        patch.dict("os.environ", env, clear=True),
+        patch.object(memory_data._OPENER, "open", explode),
+        redirect_stdout(out),
+        redirect_stderr(err),
+    ):
+        code = memory_data.main(["--json", "musubi", "status"])
+    assert code == 2 and type(error).__name__ in err.getvalue()
+    assert "Bearer" not in err.getvalue() and TOKEN not in err.getvalue() + out.getvalue()
+    if error.errno is not None:
+        import os as _os
+
+        assert f"errno {error.errno}: {_os.strerror(error.errno)}" in err.getvalue()

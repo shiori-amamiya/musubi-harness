@@ -40,6 +40,7 @@ import base64
 import json
 import os
 import re
+import socket
 import sys
 import urllib.error
 import urllib.parse
@@ -85,16 +86,25 @@ class MusubiHTTPError(CliError):
 
 
 def _local_reason(exc: BaseException) -> str:
-    """Describe a transport failure using only text this machine produced.
+    """Describe a transport failure using only text this machine derives.
 
-    Server-controlled text reaches exception messages too (http.client quotes
-    a malformed status line verbatim), so only the class name and, for socket
-    errors, the operating system's own strerror are printed.
+    Exception messages can carry server-controlled text (http.client quotes a
+    malformed status line verbatim), and even ``OSError.strerror`` is just a
+    constructor argument, so no text held by the exception is printed. Only
+    the class name and the numeric errno are used; the message is looked up
+    locally from that number (Tama's review).
     """
     reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
-    if isinstance(reason, OSError) and reason.strerror:
-        return f"{type(reason).__name__}: {reason.strerror}"
-    return type(reason).__name__ if isinstance(reason, BaseException) else type(exc).__name__
+    if not isinstance(reason, BaseException):
+        return type(exc).__name__
+    name = type(reason).__name__
+    number = reason.errno if isinstance(reason, OSError) else None
+    if not isinstance(number, int) or isinstance(number, bool):
+        return name
+    if isinstance(reason, socket.gaierror):
+        # getaddrinfo codes (EAI_*) are not errno values; os.strerror would lie.
+        return f"{name} {number}: name resolution failed"
+    return f"{name} errno {number}: {os.strerror(number)}"
 
 
 class _RefuseRedirects(urllib.request.HTTPRedirectHandler):

@@ -33,7 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to a `Location` target. It accepts only `http`/`https` URLs without
   credentials, query or fragment, and caps responses at 16 MiB.
 - stderr carries only locally-generated text (status, method, path, a
-  well-formed server error code, the OS's socket error). Response bodies and
+  well-formed server error code, and a socket errno with its message looked up
+  locally). Response bodies and
   server-supplied exception text are never printed, so a server or proxy that
   echoes the Authorization header cannot leak it through our logs in any
   encoding. `MUSUBI_TOKEN` must use the RFC 6750 token alphabet; a malformed
