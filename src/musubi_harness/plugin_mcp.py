@@ -369,6 +369,12 @@ class PluginMcpFacade:
                     self.runtime.memory_data_bin(config),
                     "--timeout",
                     "5",
+                    # A backlog is delivered oldest first; several rows per pass
+                    # give this remember a real chance to verify now.
+                    "--max",
+                    "5",
+                    "--budget-seconds",
+                    "8",
                 ],
                 text=True,
                 capture_output=True,
@@ -378,10 +384,13 @@ class PluginMcpFacade:
             )
             if drained.returncode == 0:
                 try:
-                    result = json.loads(drained.stdout).get("result")
+                    drain_output = json.loads(drained.stdout)
+                    batch = drain_output.get("results") or [drain_output.get("result")]
                 except (json.JSONDecodeError, AttributeError):
-                    result = None
-                if isinstance(result, dict) and result.get("event_id") == event_id:
+                    batch = []
+                # This remember may be anywhere in the batch, or not in it at all.
+                result = next((r for r in batch if isinstance(r, dict) and r.get("event_id") == event_id), None)
+                if isinstance(result, dict):
                     if result.get("state") == "verified" and isinstance(result.get("object_id"), str):
                         status, object_id = "verified", result["object_id"]
                     elif result.get("state") == "dead":

@@ -870,7 +870,7 @@ class DeliveryStore:
 
 
 class Drainer:
-    """One-at-a-time verifier. Production activation requires receipt lookup."""
+    """Row-at-a-time verifier (``flush`` batches rows). Production activation requires receipt lookup."""
 
     def __init__(
         self,
@@ -884,6 +884,34 @@ class Drainer:
         self.client = client
         self.owner = owner
         self.checkpoint = checkpoint or (lambda _name, _job: None)
+
+    def flush(
+        self,
+        *,
+        max_rows: int,
+        budget_seconds: float,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> list[dict[str, object]]:
+        """Deliver up to ``max_rows`` eligible rows within ``budget_seconds``.
+
+        One row per pass cannot drain a backlog: each turn adds a row and
+        delivers one, so a queue that ever grew stays that deep. Measured on a
+        live seat, 2026-09-26: queue depth 11-24 for hours, median delivery lag
+        66 minutes. This repeats :meth:`flush_once` and stops at the first of:
+        the queue is idle, the budget is spent, or a row did not verify. Stopping
+        at a failure keeps today's guarantee that a failing backend costs at
+        most one attempt per pass.
+        """
+        if max_rows < 1 or budget_seconds <= 0:
+            raise ContractError("max_rows and budget_seconds must be positive")
+        started = clock()
+        results: list[dict[str, object]] = []
+        while len(results) < max_rows:
+            result = self.flush_once()
+            results.append(result)
+            if result.get("state") != "verified" or clock() - started >= budget_seconds:
+                break
+        return results
 
     def flush_once(self, *, now: float | None = None) -> dict[str, object]:
         timestamp = time.time() if now is None else now
