@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one is refused without echoing it.
 - A malformed `MUSUBI_API_URL` is a configuration error (exit 2), never a
   traceback.
+- Capture refuses 14 more credential formats (`SECRET_RE`): OpenAI `sk-…` and
+  Anthropic `sk-ant-…` keys, GitHub `gho_`/`ghu_`/`ghs_`/`ghr_` tokens, AWS
+  `AKIA`/`ASIA` key ids, Slack `xox*-` tokens, Google `AIza…` keys, JWTs (signed
+  or not), and encrypted, PGP and other PEM private-key blocks. The Bearer rule
+  no longer refuses lowercase identifiers such as `Bearer credentials_file`,
+  which used to cost whole turns about auth config.
 
 ### Unchanged
 - Where an operator `memory-data` is configured, on `PATH`, beside
