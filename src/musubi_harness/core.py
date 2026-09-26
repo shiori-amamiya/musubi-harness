@@ -20,10 +20,30 @@ PLANES = frozenset({"episodic", "semantic", "procedural", "affective"})
 IDENTITY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 PRESENCE_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}/[a-z0-9][a-z0-9_-]{0,31}$")
 EVENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$")
+# Credential shapes that refuse a capture outright (see TurnEnvelope.validate).
+# Refusal loses the whole turn, so every pattern is a published, high-precision
+# token format; case-sensitive prefixes are scoped with (?-i:...). Measured in
+# tests/test_secret_patterns.py against real formats and near misses.
 SECRET_RE = re.compile(
-    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|"
+    # PEM private keys: RSA, EC, OPENSSH, DSA, ENCRYPTED, PKCS#8, PGP blocks.
+    r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|"
     r"\b(?:sk|ghp|github_pat)_[A-Za-z0-9_-]{16,}\b|"
-    r"\bBearer\s+[A-Za-z0-9._~+/=-]{16,}",
+    # GitHub OAuth, user-to-server, server-to-server and refresh tokens.
+    r"\b(?-i:gh[ousr])_[A-Za-z0-9]{30,}\b|"
+    # OpenAI (sk-, sk-proj-, sk-svcacct-) and Anthropic (sk-ant-...) keys.
+    r"\b(?-i:sk)-[A-Za-z0-9_-]{32,}|"
+    # AWS access key ids (long-term and temporary).
+    r"\b(?-i:(?:AKIA|ASIA)[0-9A-Z]{16})\b|"
+    # Slack bot, user, app and refresh tokens.
+    r"\b(?-i:xox[abeprs])-[A-Za-z0-9-]{10,}|"
+    # Google API keys.
+    r"\b(?-i:AIza)[0-9A-Za-z_-]{35}\b|"
+    # JSON Web Tokens (Musubi's own bearer tokens are JWTs), signed or not.
+    r"\b(?-i:eyJ)[A-Za-z0-9_-]{10,}\.(?-i:eyJ)[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*|"
+    # Bearer credentials, but not a lowercase identifier such as
+    # "Bearer credentials_file" (Prometheus config) or "Bearer not-a-real-token"
+    # (test prose): those refused whole turns about auth config.
+    r"\bBearer\s+(?![a-z]+(?:[-_][a-z]+)+\b)[A-Za-z0-9._~+/=-]{16,}",
     re.IGNORECASE,
 )
 FORBIDDEN_METADATA = frozenset({"system_prompt", "developer_prompt", "reasoning", "tool_output", "token", "secret"})
