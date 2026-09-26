@@ -22,7 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operator tool raised `memory_data_unavailable` and could not capture or recall.
 - `tests/test_memory_data_parity.py`: both binaries run against one fake Musubi
   and must send identical requests and print identical JSON. It runs when
-  `MUSUBI_PARITY_MEMORY_DATA` points at an operator `memory-data`.
+  `MUSUBI_PARITY_MEMORY_DATA` points at an operator `memory-data`. CI skips
+  it, because that tool is private and cannot be installed there.
+- `MUSUBI_TOKEN` must be a JWT (`iss`, `sub`, `presence`, `scope`):
+  `receipt-lookup` decodes those claims to self-attest the observer, and exits 2
+  on an opaque token. The other commands only send it as the bearer.
 
 ### Security
 - The bundled client refuses HTTP redirects, so the bearer token is never sent

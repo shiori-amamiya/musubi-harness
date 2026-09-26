@@ -34,7 +34,9 @@ VOLATILE_KEYS = {"observed_at", "checked_at", "timestamp"}
 
 pytestmark = pytest.mark.skipif(
     not (OPERATOR and Path(OPERATOR).is_file()),
-    reason="set MUSUBI_PARITY_MEMORY_DATA to an operator memory-data to run parity",
+    # The operator memory-data is private and not installable in CI, so CI skips
+    # parity; reviewers run it locally against their own copy.
+    reason="operator memory-data is private; set MUSUBI_PARITY_MEMORY_DATA to run parity locally",
 )
 
 

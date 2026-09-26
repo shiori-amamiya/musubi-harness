@@ -247,3 +247,24 @@ def test_nothing_available_is_still_refused(tmp_path: Path) -> None:
         pytest.raises(RuntimeConfigError, match="memory_data_unavailable"),
     ):
         runtime.memory_data_bin(config)
+
+
+def test_an_opaque_token_works_as_a_bearer_but_not_for_receipt_lookup() -> None:
+    fake = Fake()
+    fake.reply("GET", "/v1/ops/status", body={"status": "ok"})
+    fake.reply("POST", "/v1/idempotency/receipts/lookup", body={"status": "committed"})
+    with serve(fake) as url:
+        status_code, _, _ = run(url, "status", token="opaque-token")
+        code, payload, err = run(
+            url,
+            "receipt-lookup",
+            "--namespace",
+            "alice/laptop/episodic",
+            "--idempotency-key",
+            "k1",
+            "--request-digest",
+            "ab" * 32,
+            token="opaque-token",
+        )
+    assert status_code == 0
+    assert code == 2 and payload is None and "not a JWT" in err

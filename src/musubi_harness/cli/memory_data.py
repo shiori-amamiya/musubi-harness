@@ -14,6 +14,12 @@ Endpoint and credential come from the process environment the harness passes
 to its child (``MUSUBI_API_URL``, ``MUSUBI_TOKEN``). Plugins fill those from
 their own settings; users are not asked to export them.
 
+``MUSUBI_TOKEN`` must be a JWT carrying ``iss``, ``sub``, ``presence`` and
+``scope``. Every command sends it as the bearer, but ``receipt-lookup`` also
+decodes (without verifying) those claims to self-attest who observed the
+receipt, and exits 2 on an opaque token. Musubi issues JWTs, so this is only a
+constraint on hand-made tokens.
+
 Differences from the operator tool, all deliberately stricter:
 - redirects are refused, so the bearer token is never sent to another URL;
 - responses are capped at ``MAX_RESPONSE_BYTES``;
