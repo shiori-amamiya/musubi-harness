@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from pathlib import Path
 class RuntimeConfigError(ValueError):
     """The plugin cannot prove its deployment identity or canonical tools."""
 
+
+BUNDLED_MEMORY_DATA = "musubi-memory-data"
 
 SEGMENT = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -155,6 +158,17 @@ class PluginRuntime:
             development = self.development_root / "bin" / "memory-data"
             if development.is_file():
                 return str(development)
+        # Last resort, and the only one available outside an operator install:
+        # the public HTTP client this package ships (musubi-memory-data). It
+        # speaks the same argv and JSON, so everything above still wins where
+        # an operator memory-data exists.
+        bundled = shutil.which(BUNDLED_MEMORY_DATA)
+        if bundled:
+            return bundled
+        for directory in (sibling.parent, Path(sys.executable).parent):
+            candidate = directory / BUNDLED_MEMORY_DATA
+            if candidate.is_file():
+                return str(candidate)
         raise RuntimeConfigError("memory_data_unavailable")
 
     @staticmethod

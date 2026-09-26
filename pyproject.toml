@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "musubi-harness"
-version = "1.0.1"
+version = "1.1.0"
 description = "Host-neutral Musubi memory runtime — the shared core that Claude Code, Codex, LiveKit, Hermes, and OpenClaw seat adapters depend on."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -43,6 +43,7 @@ OpenClaw = "https://github.com/sourceblender/musubi-openclaw"
 [project.scripts]
 musubi-harness = "musubi_harness.cli.harness:main"
 musubi-harness-conformance = "musubi_harness.cli.conformance:main"
+musubi-memory-data = "musubi_harness.cli.memory_data:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/musubi_harness"]
