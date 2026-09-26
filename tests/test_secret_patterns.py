@@ -49,6 +49,9 @@ FORMATS = [
     ("JWT (unsigned)", join("ey", "J", body(20), ".", "ey", "J", body(30), "."), False),
     ("Bearer header", join("Authorization: Bear", "er ", body(32)), True),
     ("Bearer, letters only", join("Authorization: Bear", "er ", "AbCdEfGhIjKlMnOpQrStUvWx"), True),
+    # Mixed case joined by - or _ is a credential shape, not an identifier.
+    ("Bearer, mixed case with hyphen", join("Bear", "er ", "AbCdEfGhIjKl-MnOpQrStUvWxYz"), True),
+    ("Bearer, mixed case with underscore", join("Bear", "er ", "Abcd_Efgh_Ijkl_Mnop"), True),
     ("PEM RSA key", join("-----BEGIN RSA PRIV", "ATE KEY-----"), True),
     ("PEM PKCS#8 key", join("-----BEGIN PRIV", "ATE KEY-----"), True),
     ("PEM encrypted key", join("-----BEGIN ENCRYPTED PRIV", "ATE KEY-----"), False),

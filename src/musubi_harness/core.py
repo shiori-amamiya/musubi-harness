@@ -43,7 +43,9 @@ SECRET_RE = re.compile(
     # Bearer credentials, but not a lowercase identifier such as
     # "Bearer credentials_file" (Prometheus config) or "Bearer not-a-real-token"
     # (test prose): those refused whole turns about auth config.
-    r"\bBearer\s+(?![a-z]+(?:[-_][a-z]+)+\b)[A-Za-z0-9._~+/=-]{16,}",
+    # The lookahead is case-sensitive on purpose: under IGNORECASE a mixed-case
+    # token such as "AbCd-EfGh..." would look like an identifier (Tama's review).
+    r"\bBearer\s+(?!(?-i:[a-z]+(?:[-_][a-z]+)+)\b)[A-Za-z0-9._~+/=-]{16,}",
     re.IGNORECASE,
 )
 FORBIDDEN_METADATA = frozenset({"system_prompt", "developer_prompt", "reasoning", "tool_output", "token", "secret"})
