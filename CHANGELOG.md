@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `Drainer.flush(max_rows, budget_seconds)` and `musubi-harness drain --once --max N
+  --budget-seconds S`: deliver several rows per pass, oldest first, stopping when
+  the queue is idle, the budget is spent, or a row does not verify (so a failing
+  backend still costs at most one attempt per pass). One row per pass cannot
+  shrink a backlog: measured on a live seat, queue depth 11-24 for hours and a
+  median delivery lag of 66 minutes. `--max 1` (the default) prints exactly what
+  it did before.
+- The MCP facade's `remember` drains up to 5 rows within 8 s and finds its own
+  event anywhere in the batch, so a remember behind a backlog can still verify
+  in the same call.
+
 ## [1.1.1](https://github.com/sourceblender/musubi-harness/compare/v1.1.0...v1.1.1) - 2026-09-26
 
 ### Security

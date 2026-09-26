@@ -148,6 +148,9 @@ def _string_list(value: Any, *, allowed: set[str] | None = None) -> list[str]:
     return normalized
 
 
+REMEMBER_DRAIN_BUDGET_S = 4
+
+
 class PluginMcpFacade:
     """Canonical five-tool facade with adapter labels as its only variation."""
 
@@ -369,19 +372,30 @@ class PluginMcpFacade:
                     self.runtime.memory_data_bin(config),
                     "--timeout",
                     "5",
+                    # A backlog is delivered oldest first; several rows per pass
+                    # give this remember a real chance to verify now.
+                    "--max",
+                    "5",
+                    "--budget-seconds",
+                    str(REMEMBER_DRAIN_BUDGET_S),
                 ],
                 text=True,
                 capture_output=True,
-                timeout=15,
+                # Budget + one full row (4 calls x 5 s) + slack: a row started just
+                # before the budget ends must not be killed mid-delivery.
+                timeout=REMEMBER_DRAIN_BUDGET_S + 4 * 5 + 1,
                 check=False,
                 env=self.runtime.tool_environment(config),
             )
             if drained.returncode == 0:
                 try:
-                    result = json.loads(drained.stdout).get("result")
+                    drain_output = json.loads(drained.stdout)
+                    batch = drain_output.get("results") or [drain_output.get("result")]
                 except (json.JSONDecodeError, AttributeError):
-                    result = None
-                if isinstance(result, dict) and result.get("event_id") == event_id:
+                    batch = []
+                # This remember may be anywhere in the batch, or not in it at all.
+                result = next((r for r in batch if isinstance(r, dict) and r.get("event_id") == event_id), None)
+                if isinstance(result, dict):
                     if result.get("state") == "verified" and isinstance(result.get("object_id"), str):
                         status, object_id = "verified", result["object_id"]
                     elif result.get("state") == "dead":

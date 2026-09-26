@@ -57,6 +57,8 @@ def parser() -> argparse.ArgumentParser:
     drain.add_argument("--owner", required=True)
     drain.add_argument("--memory-data-bin", default="memory-data")
     drain.add_argument("--timeout", type=float, default=5.0)
+    drain.add_argument("--max", type=int, default=1, help="deliver up to N rows in this pass (1-20; default 1, the previous behaviour)")
+    drain.add_argument("--budget-seconds", type=float, default=10.0, help="stop starting new rows after this long")
     return root
 
 
@@ -105,7 +107,16 @@ def main() -> int:
             result = DeliveryStore(args.db).resolve_pending(args.event_id, evidence)
         else:
             client = MemoryDataClient(args.memory_data_bin, timeout=args.timeout)
-            result = Drainer(DeliveryStore(args.db), client, owner=args.owner).flush_once()
+            drainer = Drainer(DeliveryStore(args.db), client, owner=args.owner)
+            if not 1 <= args.max <= 20:
+                raise ContractError("drain --max must be between 1 and 20")
+            if args.max == 1:
+                result = drainer.flush_once()  # output unchanged for existing callers
+            else:
+                results = drainer.flush(max_rows=args.max, budget_seconds=args.budget_seconds)
+                # "result" stays the first row, as with --once; "results" has them all.
+                print(json.dumps({"ok": True, "result": results[0], "results": results}, ensure_ascii=False, sort_keys=True))
+                return 0
     except (
         ContractError,
         DeliveryTerminalError,
