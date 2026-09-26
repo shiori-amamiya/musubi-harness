@@ -329,7 +329,8 @@ class PluginMcpFacade:
             capture_output=True,
             timeout=8,
             check=False,
-            env=self.runtime.tool_environment(config),
+            # A local outbox write: no Musubi credentials. The drain below gets them.
+            env=self.runtime.local_tool_environment(config),
         )
         if completed.returncode != 0:
             fail_detail = (completed.stderr or completed.stdout or "local remember failed").strip()[:600]
