@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a change to the host-neutral contract.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `musubi-harness` is intentionally narrow. Before proposing an
+        addition, please confirm that the change belongs in the
+        harness (i.e. it is host-neutral and at least one seat adapter
+        needs it) and not in a specific adapter.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+
+  - type: textarea
+    id: adapters
+    attributes:
+      label: Which seat adapter(s) need this?
+      description: |
+        If none, justify why the change belongs in the host-neutral
+        harness rather than in a specific adapter.
+    validations:
+      required: true
+
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Cross-adapter contract impact
+      description: |
+        Does this change any state name (`shadow`, `pending`,
+        `accepted`, `verified`, `dead`), any receipt shape, any
+        identity policy, or any namespace rule? If yes, every seat
+        adapter is affected.
+    validations:
+      required: true

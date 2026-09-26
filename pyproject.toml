@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "musubi-harness"
+version = "1.0.0"
+description = "Host-neutral Musubi memory runtime — the shared core that Claude Code, Codex, LiveKit, Hermes, and OpenClaw seat adapters depend on."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+keywords = ["musubi", "memory", "agents", "runtime", "capture", "outbox", "delivery"]
+authors = [
+    { name = "Eric Mey", email = "ericmey@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    # No runtime deps beyond the stdlib today. Plugin adapters pull their own
+    # MCP/agent framework dependencies; the harness itself is intentionally
+    # transport-neutral so the same code can back stdio MCP servers,
+    # hooks, or batch scripts.
+]
+
+[project.urls]
+Homepage = "https://github.com/sourceblender/musubi-harness"
+Repository = "https://github.com/sourceblender/musubi-harness"
+Issues = "https://github.com/sourceblender/musubi-harness/issues"
+# Sibling adapters
+ClaudeCode = "https://github.com/sourceblender/musubi-claude"
+Codex = "https://github.com/sourceblender/musubi-codex"
+LiveKit = "https://github.com/sourceblender/musubi-livekit"
+Hermes = "https://github.com/sourceblender/musubi-hermes"
+OpenClaw = "https://github.com/sourceblender/musubi-openclaw"
+
+[project.scripts]
+musubi-harness = "musubi_harness.cli.harness:main"
+musubi-harness-conformance = "musubi_harness.cli.conformance:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/musubi_harness"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/musubi_harness",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
+
+[tool.ruff]
+# The fleet-tools harness source predates any line-length standard.
+# Refactoring every long line is out of scope for the extraction PR
+# — the harness gets its own opinionated style guide in a follow-up.
+# 140 covers the longest line in the existing code without forcing
+# churn here.
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+# Match the fleet-tools defaults so the harness reads identically in either
+# workspace. Strict but not idiosyncratic.
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["musubi_harness"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+
+[tool.release-please]
+release-type = "python"
+package-name = "musubi-harness"

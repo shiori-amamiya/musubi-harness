@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a defect in musubi-harness.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include a minimal reproducer —
+        the harness is exercised by code, so the most useful reports
+        show the call, the input, and what came back.
+
+  - type: input
+    id: version
+    attributes:
+      label: musubi-harness version
+      description: The output of `pip show musubi-harness | grep Version`.
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: The output of `python --version`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal reproducer
+      description: |
+        A self-contained snippet that demonstrates the bug. Include
+        any input data needed to reproduce (you may redact conversation
+        content; the harness intentionally never logs it).
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: adapters
+    attributes:
+      label: Which host adapter are you using?
+      description: |
+        musubi-claude, musubi-codex, musubi-livekit, musubi-hermes,
+        musubi-openclaw, or none (consuming the harness directly)?
