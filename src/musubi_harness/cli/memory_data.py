@@ -99,12 +99,18 @@ def _local_reason(exc: BaseException) -> str:
         return type(exc).__name__
     name = type(reason).__name__
     number = reason.errno if isinstance(reason, OSError) else None
-    if not isinstance(number, int) or isinstance(number, bool):
+    # errno is caller-supplied too: os.strerror(10**100) raises OverflowError.
+    # Real errno and EAI codes are small; anything else is reported by name.
+    if not isinstance(number, int) or isinstance(number, bool) or not 0 < abs(number) < 4096:
         return name
     if isinstance(reason, socket.gaierror):
         # getaddrinfo codes (EAI_*) are not errno values; os.strerror would lie.
         return f"{name} {number}: name resolution failed"
-    return f"{name} errno {number}: {os.strerror(number)}"
+    try:
+        message = os.strerror(number)
+    except (ValueError, OverflowError):
+        return f"{name} errno {number}"
+    return f"{name} errno {number}: {message}"
 
 
 class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
@@ -475,6 +481,12 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except CliError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001 - the backstop: never a traceback
+        # A traceback prints every chained exception's message, and some of
+        # that text is caller- or server-supplied (Tama's review). Anything
+        # unexpected is reported by class name only, still exit 2.
+        print(f"error: unexpected {type(exc).__name__}", file=sys.stderr)
         return 2
 
 

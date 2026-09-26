@@ -403,3 +403,54 @@ def test_no_text_held_by_the_exception_is_printed(error: OSError) -> None:
         import os as _os
 
         assert f"errno {error.errno}: {_os.strerror(error.errno)}" in err.getvalue()
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [
+        lambda: urllib_error().URLError(OSError(10**100, f"Bearer {TOKEN}")),
+        lambda: urllib_error().URLError(OSError(-(10**100), f"Bearer {TOKEN}")),
+        lambda: RuntimeError(f"Bearer {TOKEN}"),
+        lambda: KeyError(f"Bearer {TOKEN}"),
+    ],
+    ids=["huge-errno", "huge-negative-errno", "unexpected-runtime", "unexpected-keyerror"],
+)
+def test_nothing_escapes_main_and_no_traceback_carries_the_token(raised: Any) -> None:
+    # Tama's review, 2026-09-26: os.strerror(10**100) raised OverflowError out
+    # of main, and the traceback printed the chained "Bearer ..." message.
+    def explode(*_args: Any, **_kwargs: Any) -> Any:
+        raise raised()
+
+    out, err = io.StringIO(), io.StringIO()
+    env = {"MUSUBI_API_URL": "http://127.0.0.1:9", "MUSUBI_TOKEN": TOKEN}
+    with (
+        patch.dict("os.environ", env, clear=True),
+        patch.object(memory_data._OPENER, "open", explode),
+        redirect_stdout(out),
+        redirect_stderr(err),
+    ):
+        code = memory_data.main(["--json", "musubi", "status"])  # must return, not raise
+    assert code == 2
+    assert "Bearer" not in err.getvalue() and TOKEN not in err.getvalue() + out.getvalue()
+    if isinstance(raised(), urllib_error().URLError):
+        # The errno bound handles these itself; the main() backstop is not needed.
+        assert err.getvalue().strip() == "error: Musubi request failed GET /ops/status: OSError"
+
+
+def test_an_unexpected_error_outside_the_request_is_also_contained() -> None:
+    err = io.StringIO()
+    env = {"MUSUBI_API_URL": "http://127.0.0.1:9", "MUSUBI_TOKEN": TOKEN}
+    with (
+        patch.dict("os.environ", env, clear=True),
+        patch.object(memory_data, "request_json", side_effect=ZeroDivisionError(f"Bearer {TOKEN}")),
+        redirect_stdout(io.StringIO()),
+        redirect_stderr(err),
+    ):
+        code = memory_data.main(["--json", "musubi", "status"])
+    assert code == 2 and err.getvalue().strip() == "error: unexpected ZeroDivisionError"
+
+
+def urllib_error() -> Any:
+    import urllib.error
+
+    return urllib.error
