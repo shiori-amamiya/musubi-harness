@@ -116,5 +116,12 @@ def test_an_unverified_subject_cannot_forge_a_line(sub: Any) -> None:
     for problem in problems:
         assert "\n" not in problem and "\r" not in problem and "\x1b" not in problem and "\u2028" not in problem
         assert len(problem) < 200 and "forged" not in problem and "fits" not in problem
-    if isinstance(sub, str):
-        assert problems[0] == "the Musubi token is for an unrecognised subject, but this seat is aoi/command-chair"
+    assert problems[0] == "the Musubi token is for an unrecognised subject, but this seat is aoi/command-chair"
+
+
+@pytest.mark.parametrize("claims", [{"scope": "aoi/command-chair/*:rw"}, {"sub": None, "scope": "aoi/command-chair/*:rw"}])
+def test_a_missing_subject_is_still_reported_even_with_write_scope(claims: dict[str, Any]) -> None:
+    # Yua's review: a decodable token without a subject establishes no seat.
+    assert token_presence_problems(jwt(claims), "aoi/command-chair") == [
+        "the Musubi token is for an unrecognised subject, but this seat is aoi/command-chair"
+    ]

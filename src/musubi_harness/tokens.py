@@ -97,7 +97,8 @@ def token_presence_problems(token: str, presence: str) -> list[str]:
     problems = []
     subject = claims.get("sub")
     seat = _shown(presence)
-    if isinstance(subject, str) and subject != presence:
+    # A missing or non-string sub establishes no seat either (Yua's review).
+    if subject != presence:
         problems.append(f"the Musubi token is for {_shown(subject)}, but this seat is {seat}")
     if not scope_allows(claims.get("scope"), f"{presence}/episodic", "w"):
         problems.append(f"the token cannot write {seat}/episodic, so nothing will be delivered")
